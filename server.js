@@ -5,6 +5,8 @@ import Debug from 'debug';
 import http from 'http';
 import { hri } from 'human-readable-ids';
 import Router from 'koa-router';
+import basicAuthParser from 'basic-auth-parser';
+import bcrypt from 'bcrypt';
 
 import ClientManager from './lib/ClientManager';
 
@@ -65,6 +67,44 @@ export default function(opt) {
 
         const isNewClientRequest = ctx.query['new'] !== undefined;
         if (isNewClientRequest) {
+            const auth = ctx.request.header.authorization;
+
+            if (!auth) {
+                console.warn('No authorization header found in request');
+                ctx.throw(401, 'Unauthorized');
+                return;
+            }
+
+            const authInfo = basicAuthParser(auth);
+
+            if (!authInfo.username || !authInfo.password) {
+                console.warn('Invalid authorization header found in request');
+                ctx.throw(401, 'Unauthorized');
+                return;
+            }
+
+            const users = JSON.parse(process.env.LOCALTUNNEL_CREDENTIALS);
+
+            const user = users.find(([ username ]) => {
+                return username === authInfo.username;
+            });
+
+            if (!user) {
+                console.warn(`No user found with username`, authInfo.username);
+                ctx.throw(401, 'Unauthorized');
+                return;
+            }
+
+            const [ username, passwordHash ] = user;
+            const result = await bcrypt.compare(authInfo.password, passwordHash);
+
+            if (!result) {
+                console.warn('Invalid auth');
+                console.warn(await bcrypt.hash(authInfo.password, 10))
+                ctx.throw(401, 'Unauthorized');
+                return;
+            }
+
             const reqId = hri.random();
             debug('making new client with id %s', reqId);
             const info = await manager.newClient(reqId);
@@ -118,6 +158,8 @@ export default function(opt) {
     const appCallback = app.callback();
 
     server.on('request', (req, res) => {
+        console.info('REQ', req.headers.host, req.url);
+
         // without a hostname, we won't know who the request is for
         const hostname = req.headers.host;
         if (!hostname) {
