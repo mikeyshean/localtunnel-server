@@ -46,7 +46,6 @@ const checkAuth = async (ctx) => {
 
     if (!result) {
         console.warn('Invalid auth');
-        console.warn(await bcrypt.hash(authInfo.password, 10))
         ctx.throw(401, 'Unauthorized');
         return false;
     }
