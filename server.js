@@ -12,6 +12,48 @@ import ClientManager from './lib/ClientManager';
 
 const debug = Debug('localtunnel:server');
 
+const checkAuth = async (ctx) => {
+    const auth = ctx.request.header.authorization;
+
+    if (!auth) {
+        console.warn('No authorization header found in request');
+        ctx.throw(401, 'Unauthorized');
+        return false;
+    }
+
+    const authInfo = basicAuthParser(auth);
+
+    if (!authInfo.username || !authInfo.password) {
+        console.warn('Invalid authorization header found in request');
+        ctx.throw(401, 'Unauthorized');
+        return false;
+    }
+
+    const users = JSON.parse(process.env.LOCALTUNNEL_CREDENTIALS);
+
+    const user = users.find(([ username ]) => {
+        return username === authInfo.username;
+    });
+
+    if (!user) {
+        console.warn(`No user found with username`, authInfo.username);
+        ctx.throw(401, 'Unauthorized');
+        return false;
+    }
+
+    const [ username, passwordHash ] = user;
+    const result = await bcrypt.compare(authInfo.password, passwordHash);
+
+    if (!result) {
+        console.warn('Invalid auth');
+        console.warn(await bcrypt.hash(authInfo.password, 10))
+        ctx.throw(401, 'Unauthorized');
+        return false;
+    }
+
+    return true;
+}
+
 export default function(opt) {
     opt = opt || {};
 
@@ -67,41 +109,7 @@ export default function(opt) {
 
         const isNewClientRequest = ctx.query['new'] !== undefined;
         if (isNewClientRequest) {
-            const auth = ctx.request.header.authorization;
-
-            if (!auth) {
-                console.warn('No authorization header found in request');
-                ctx.throw(401, 'Unauthorized');
-                return;
-            }
-
-            const authInfo = basicAuthParser(auth);
-
-            if (!authInfo.username || !authInfo.password) {
-                console.warn('Invalid authorization header found in request');
-                ctx.throw(401, 'Unauthorized');
-                return;
-            }
-
-            const users = JSON.parse(process.env.LOCALTUNNEL_CREDENTIALS);
-
-            const user = users.find(([ username ]) => {
-                return username === authInfo.username;
-            });
-
-            if (!user) {
-                console.warn(`No user found with username`, authInfo.username);
-                ctx.throw(401, 'Unauthorized');
-                return;
-            }
-
-            const [ username, passwordHash ] = user;
-            const result = await bcrypt.compare(authInfo.password, passwordHash);
-
-            if (!result) {
-                console.warn('Invalid auth');
-                console.warn(await bcrypt.hash(authInfo.password, 10))
-                ctx.throw(401, 'Unauthorized');
+            if (!await checkAuth(ctx)) {
                 return;
             }
 
@@ -141,6 +149,10 @@ export default function(opt) {
             ctx.body = {
                 message: msg,
             };
+            return;
+        }
+
+        if (!await checkAuth(ctx)) {
             return;
         }
 
