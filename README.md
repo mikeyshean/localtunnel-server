@@ -68,3 +68,20 @@ docker run -d \
     --net host \
     defunctzombie/localtunnel-server:latest --port 3000
 ```
+
+## Generate a new user
+
+1. Generate the user/password:
+    ```bash
+    npm run generate-password -- --name xyz
+    ```
+2. Store the hash on the server-side in `.env` in `LOCALTUNNEL_CREDENTIALS`
+3. Store the name and password on the client in `.env` in `LOCALTUNNEL_NAME` and `LOCALTUNNEL_PASSWORD`
+4. Restart the server:
+    ```shell
+    pm2 restart server
+    ```
+5. Set up a new SSL cert for the user's subdomain
+    ```shell
+    certbot -d 'xyz.localtunnel.onetext.com'
+    ```
